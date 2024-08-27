@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Просмотр файлов на Яндекс.Диске</title>
+</head>
+<body>
+    <h1>Просмотр файлов на Яндекс.Диске</h1>
+    <form action="{% url 'files' %}" method="get">
+        <label for="public_key">Введите публичную ссылку:</label>
+        <input type="text" name="public_key" id="public_key" required>
+        <button type="submit">Просмотр файлов</button>
+    </form>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Файлы на Яндекс.Диске</title>
+</head>
+<body>
+    <h1>Файлы на Яндекс.Диске</h1>
+    <ul>
+        {% for item in items %}
+            <li>
+                {{ item.name }}
+                {% if item.type == 'file' %}
+                    <a href="{% url 'download' %}?public_key={{ public_key }}&file_path={{ item.path }}&file_name={{ item.name }}">Скачать</a>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+    <a href="{% url 'index' %}">Назад</a>
+</body>
+</html>
