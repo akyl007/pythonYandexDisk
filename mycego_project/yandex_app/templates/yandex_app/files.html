@@ -1,21 +1,67 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Файлы на Яндекс.Диске</title>
+    <script>
+        function downloadFiles(event) {
+            event.preventDefault();  // Предотвращаем стандартную отправку формы
+
+            const form = event.target;
+            const formData = new FormData(form);
+
+            fetch(form.action, {
+                method: form.method,
+                body: formData,
+                headers: {
+                    'X-CSRFToken': formData.get('csrfmiddlewaretoken')  // Добавляем CSRF токен
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                // Создаем ссылки для скачивания и добавляем их в DOM
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                document.body.appendChild(tempDiv);
+
+                // Инициируем скачивание файлов
+                const links = tempDiv.querySelectorAll('a');
+                links.forEach(link => link.click());
+                tempDiv.remove();  // Удаляем временный контейнер
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
 </head>
 <body>
-    <h1>Файлы на Яндекс.Диске</h1>
-    <ul>
-        {% for item in items %}
-            <li>
-                {{ item.name }}
-                {% if item.type == 'file' %}
-                    <a href="{% url 'download' %}?public_key={{ public_key }}&file_path={{ item.path }}&file_name={{ item.name }}">Скачать</a>
-                {% endif %}
-            </li>
-        {% endfor %}
-    </ul>
-    <a href="{% url 'index' %}">Назад</a>
+    <!-- Форма для фильтрации по типу файлов -->
+    <form method="get" action="{% url 'files' %}">
+        <input type="hidden" name="public_key" value="{{ public_key }}">
+        <label for="file_type">Фильтр по типу:</label>
+        <select name="file_type" id="file_type">
+            <option value="">Все</option>
+            <option value="image">Изображения</option>
+            <option value="application">Документы</option>
+            <!-- Добавьте больше типов по необходимости -->
+        </select>
+        <button type="submit">Фильтровать</button>
+    </form>
+
+    <!-- Форма для загрузки выбранных файлов -->
+    <form method="post" action="{% url 'download_multiple' %}" onsubmit="downloadFiles(event)">
+        {% csrf_token %}
+        <input type="hidden" name="public_key" value="{{ public_key }}">
+        <ul>
+            {% for item in items %}
+                <li>
+                    <input type="checkbox" name="file_ids" value="{{ item.path }}"> {{ item.name }} ({{ item.mime_type }})
+                </li>
+            {% endfor %}
+        </ul>
+        <button type="submit">Скачать выбранные</button>
+    </form>
 </body>
 </html>

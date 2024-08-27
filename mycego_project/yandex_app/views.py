@@ -2,63 +2,78 @@ from django.shortcuts import render, redirect
 from django.http import HttpResponse, HttpResponseNotFound
 import requests
 from django.views.decorators.http import require_http_methods
+from typing import List
 
 YANDEX_API_URL = "https://cloud-api.yandex.net/v1/disk/public/resources"
 YANDEX_DOWNLOAD_URL = "https://cloud-api.yandex.net/v1/disk/public/resources/download"
 
-
 def index(request) -> HttpResponse:
     """
     Главная страница с формой для ввода публичной ссылки.
-
-    :param request: объект HttpRequest
-    :return: объект HttpResponse с формой для ввода публичной ссылки
     """
     return render(request, 'yandex_app/index.html')
-
 
 def extract_public_key(public_url: str) -> str:
     """
     Извлекает публичный ключ из URL, если передана полная ссылка.
-
-    :param public_url: строка URL или ключа
-    :return: публичный ключ
     """
-    # Проверяем, содержит ли ссылка домен "disk.yandex.kz" или "disk.yandex.ru"
     if "disk.yandex" in public_url:
-        return public_url.split('/')[-1]  # Получаем последний сегмент URL
+        return public_url.split('/')[-1]
     return public_url
 
-
-def files(request):
+def files(request) -> HttpResponse:
     """
     Получает список файлов по публичной ссылке и отображает их.
     """
     public_url = request.GET.get('public_key')
+    file_type = request.GET.get('file_type')
 
     if not public_url:
         return redirect('index')
 
     try:
         response = requests.get(YANDEX_API_URL, params={'public_key': public_url})
-        print(f"Request URL: {response.url}")
-        print(f"Status Code: {response.status_code}, Response: {response.text}")
-
         response.raise_for_status()
-
         items = response.json().get('_embedded', {}).get('items', [])
+
+        if file_type:
+            items = [item for item in items if item['mime_type'].startswith(file_type)]
+
         return render(request, 'yandex_app/files.html', {'items': items, 'public_key': public_url})
 
     except requests.exceptions.HTTPError as http_err:
-        error_message = f"HTTP error occurred: {http_err}"
-        print(error_message)
-        return HttpResponse(error_message, status=response.status_code)
-
+        return HttpResponse(f"HTTP error occurred: {http_err}", status=response.status_code)
     except Exception as err:
-        error_message = f"Other error occurred: {err}"
-        print(error_message)
-        return HttpResponse("Ошибка при получении данных с Яндекс.Диска.", status=500)
+        return HttpResponse(f"Other error occurred: {err}", status=500)
 
+@require_http_methods(["POST"])
+def download_multiple(request) -> HttpResponse:
+    public_key = request.POST.get('public_key')
+    file_ids = request.POST.getlist('file_ids')
+
+    if not public_key or not file_ids:
+        return HttpResponseNotFound("Параметры запроса отсутствуют.")
+
+    download_urls = []
+    for file_id in file_ids:
+        try:
+            download_url = f"{YANDEX_DOWNLOAD_URL}?public_key={public_key}&path={file_id}"
+            response = requests.get(download_url)
+            response.raise_for_status()
+            download_link = response.json().get('href')
+            if download_link:
+                download_urls.append(download_link)
+        except requests.exceptions.HTTPError as http_err:
+            return HttpResponseNotFound(f"HTTP ошибка при получении файла {file_id}: {http_err}")
+        except Exception as err:
+            return HttpResponseNotFound(f"Ошибка при получении файла {file_id}: {err}")
+
+    if not download_urls:
+        return HttpResponseNotFound("Не удалось найти ссылки для скачивания.")
+
+    # Формируем HTML с несколькими ссылками для скачивания
+    links_html = ''.join([f'<a href="{url}" download></a>' for url in download_urls])
+    return HttpResponse(links_html)
 
 @require_http_methods(["GET"])
 def download_file(request):
