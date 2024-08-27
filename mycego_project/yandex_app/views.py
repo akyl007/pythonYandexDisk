@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseNotFound
 import requests
+from django.views.decorators.http import require_http_methods
 
 YANDEX_API_URL = "https://cloud-api.yandex.net/v1/disk/public/resources"
 YANDEX_DOWNLOAD_URL = "https://cloud-api.yandex.net/v1/disk/public/resources/download"
@@ -59,43 +60,30 @@ def files(request):
         return HttpResponse("Ошибка при получении данных с Яндекс.Диска.", status=500)
 
 
-def download_file(request) -> HttpResponse:
-    """
-    Скачивает выбранный файл с Яндекс.Диска.
-
-    :param request: объект HttpRequest с параметрами 'public_key' и 'file_path'
-    :return: объект HttpResponse с загруженным файлом или сообщение об ошибке
-    """
+@require_http_methods(["GET"])
+def download_file(request):
     public_key = request.GET.get('public_key')
     file_path = request.GET.get('file_path')
+    file_name = request.GET.get('file_name')
 
-    if not public_key or not file_path:
-        return redirect('index')
+    if not all([public_key, file_path, file_name]):
+        return HttpResponseNotFound("Параметры запроса отсутствуют.")
 
-    # Извлекаем публичный ключ
-    public_key = extract_public_key(public_key)
+    # Преобразование пути к файлу в URL для скачивания
+    download_url = f"{YANDEX_DOWNLOAD_URL}?public_key={public_key}&path={file_path}"
 
     try:
-        # Запрашиваем ссылку для скачивания файла
-        response = requests.get(YANDEX_DOWNLOAD_URL, params={'public_key': public_key, 'path': file_path})
+        response = requests.get(download_url)
+        response.raise_for_status()  # Это вызывает исключение при ошибках HTTP
+        download_link = response.json().get('href')
 
-        print(f"Download Status Code: {response.status_code}, Response: {response.text}")
+        if not download_link:
+            return HttpResponseNotFound("Не удалось найти ссылку для скачивания.")
 
-        response.raise_for_status()
-
-        download_url = response.json().get('href')
-        file_response = requests.get(download_url)
-
-        response = HttpResponse(file_response.content, content_type='application/octet-stream')
-        response['Content-Disposition'] = f'attachment; filename="{file_path.split('/')[-1]}"'
-        return response
+        # Редирект на ссылку для скачивания
+        return HttpResponse(f'<a href="{download_link}" download>Скачать {file_name}</a>')
 
     except requests.exceptions.HTTPError as http_err:
-        error_message = f"HTTP error occurred: {http_err}"
-        print(error_message)
-        return HttpResponse(error_message, status=response.status_code)
-
+        return HttpResponseNotFound(f"HTTP ошибка: {http_err}")
     except Exception as err:
-        error_message = f"Other error occurred: {err}"
-        print(error_message)
-        return HttpResponse("Ошибка при скачивании файла с Яндекс.Диска.", status=500)
+        return HttpResponseNotFound(f"Ошибка: {err}")
